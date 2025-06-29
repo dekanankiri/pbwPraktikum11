@@ -1,47 +1,51 @@
 <?php
-// Konfigurasi database
-$db_hostname = "localhost";        // Ganti dengan host database Anda
-$db_database = "pbw_pertemuan9";        // Ganti dengan nama database Anda
-$db_username = "root";           // Ganti dengan username Anda
-$db_password = "";       // Ganti dengan password Anda
-$db_charset  = "utf8mb4";          // Charset opsional
+require_once 'koneksi.php';
 
-// DSN dan opsi PDO
-$dsn = "mysql:host=$db_hostname;dbname=$db_database;charset=$db_charset";
-$opt = array(
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES   => false
-);
+header('Content-Type: application/json');
 
 try {
-    // Koneksi ke database
-    $pdo = new PDO($dsn, $db_username, $db_password, $opt);
-
-    // Ambil parameter dari permintaan
+    // Get search keyword from request
     $query = $_GET["keyword"] ?? "";
-
-    // Siapkan statement SQL
-    $stmt = $pdo->prepare("SELECT name FROM meetings WHERE name LIKE ?"); 
-    $stmt->execute([$query . "%"]);
-
-    // Inisialisasi hasil
-    $hint = "";
-
-    // lookup all hints if query result is not empty
-    if ($stmt) {
-    echo json_encode($stmt);
-    }
-    else{// Output "no suggestion" if no hint was found or output correct values
-    $response[] = array(
-    'name'=>'no suggestion'
-    );
-    echo json_encode($response);
+    
+    if (empty($query)) {
+        echo json_encode([]);
+        exit;
     }
 
-    // Tutup koneksi
-    $pdo = null;
-} catch (PDOException $e) {
-    exit("PDO Error: " . $e->getMessage() . "<br>");
+    // Prepare and execute the search query
+    $stmt = $conn->prepare("SELECT DISTINCT name FROM meetings WHERE name LIKE ?");
+    if (!$stmt) {
+        throw new Exception("Failed to prepare statement: " . $conn->error);
+    }
+
+    $searchTerm = $query . "%";
+    $stmt->bind_param("s", $searchTerm);
+    
+    if (!$stmt->execute()) {
+        throw new Exception("Failed to execute query: " . $stmt->error);
+    }
+
+    $result = $stmt->get_result();
+    $suggestions = [];
+
+    // Fetch all matching names
+    while ($row = $result->fetch_assoc()) {
+        $suggestions[] = ['name' => $row['name']];
+    }
+
+    // Return results
+    echo json_encode($suggestions);
+
+} catch (Exception $e) {
+    error_log("Search error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['error' => 'An error occurred while searching']);
+} finally {
+    if (isset($stmt)) {
+        $stmt->close();
+    }
+    if (isset($conn)) {
+        $conn->close();
+    }
 }
 ?>

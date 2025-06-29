@@ -1,32 +1,107 @@
 <?php
 session_start();
 if (!isset($_SESSION['username'])) {
-    header("Location: php10D.php");
+    header("Location: php11D.php");
     exit();
 }
-$conn = new mysqli("localhost", "root", "", "pbw_pertemuan9");
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
 
-$slot  = $_POST['slot'];
-$name  = $_POST['name'];
-$email = $_POST['email'];
+require_once 'koneksi.php';
 
-if (empty($slot) || empty($name) || empty($email)) {
-    echo "All fields are required.";
-    exit;
-}
+try {
+    // Validate input
+    $slot = isset($_POST['slot']) ? (int)$_POST['slot'] : 0;
+    $name = trim($_POST['name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
 
-$stmt = $conn->prepare("UPDATE meetings SET name = ?, email = ? WHERE slot = ?");
-$stmt->bind_param("ssi", $name, $email, $slot);
+    if (empty($slot) || empty($name) || empty($email)) {
+        throw new Exception("All fields are required.");
+    }
 
-if ($stmt->execute()) {
-    header("Location: php10F.php");
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new Exception("Invalid email format.");
+    }
+
+    // Prepare and execute update
+    $stmt = $conn->prepare("UPDATE meetings SET name = ?, email = ? WHERE slot = ?");
+    if (!$stmt) {
+        throw new Exception("Prepare failed: " . $conn->error);
+    }
+
+    $stmt->bind_param("ssi", $name, $email, $slot);
+    
+    if (!$stmt->execute()) {
+        throw new Exception("Update failed: " . $stmt->error);
+    }
+
+    if ($stmt->affected_rows === 0) {
+        throw new Exception("No meeting was updated. The meeting may not exist.");
+    }
+
+    // Success - redirect back to meetings list
+    header("Location: php11F.php");
     exit();
-} else {
-    echo "Update failed: " . $stmt->error;
-}
 
-$stmt->close();
-$conn->close();
+} catch (Exception $e) {
+    // Log the error
+    error_log("Meeting update error: " . $e->getMessage());
+    
+    // Show error page
+    ?>
+    <!DOCTYPE html>
+    <html lang="en-GB">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Error - Meeting Update</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+        <style>
+            body {
+                font-family: 'Inter', sans-serif;
+            }
+        </style>
+    </head>
+    <body class="bg-gray-50">
+        <?php include('php11F_header.php'); ?>
+
+        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <div class="px-4 py-6 sm:px-0">
+                <div class="max-w-md mx-auto">
+                    <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+                        <div class="rounded-md bg-red-50 p-4">
+                            <div class="flex">
+                                <div class="ml-3">
+                                    <h3 class="text-sm font-medium text-red-800">Error</h3>
+                                    <div class="mt-2 text-sm text-red-700">
+                                        <p><?= htmlspecialchars($e->getMessage()) ?></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6 flex justify-between space-x-4">
+                            <a href="php11G.php?slot=<?= $slot ?>" 
+                               class="flex-1 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 text-center">
+                                Try Again
+                            </a>
+                            <a href="php11F.php" 
+                               class="flex-1 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 text-center">
+                                Back to Meetings
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </body>
+    </html>
+    <?php
+} finally {
+    if (isset($stmt)) {
+        $stmt->close();
+    }
+    if (isset($conn)) {
+        $conn->close();
+    }
+}
+?>
